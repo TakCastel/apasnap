@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import UrlBar from './components/UrlBar';
 import Gallery from './components/Gallery';
+import GallerySkeleton from './components/GallerySkeleton';
 import Lightbox from './components/Lightbox';
 import FilterBar from './components/FilterBar';
 import { parseApacheDirectoryHtml, generateDemoData } from './services/parser';
@@ -78,6 +79,9 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     setItems([]);
+    // Note: loadedUrl is not set immediately here to avoid showing "https://..." title during skeleton load if not desired, 
+    // but setting it here allows the "Compact" bar to show the URL in input if needed.
+    // For now we rely on items.length for some UI logic, but we need a 'showCompact' flag.
     
     try {
       const html = await fetchWithProxyFallback(url);
@@ -178,6 +182,9 @@ const App: React.FC = () => {
     return result;
   }, [items, searchQuery, sortOption, filterType]);
 
+  // Determine if we should show the compact interface
+  const showCompact = items.length > 0 || isLoading;
+
   return (
     <div className="min-h-screen bg-rev-bg text-white font-sans selection:bg-blue-500 selection:text-white pb-20">
       
@@ -185,69 +192,96 @@ const App: React.FC = () => {
         Unified Sticky Header 
         Contains UrlBar (compact), Stats, and FilterBar to ensure they all stick together 
       */}
-      <div className={`sticky top-0 z-30 transition-all duration-300 ${items.length > 0 ? 'bg-rev-bg/95 backdrop-blur-xl border-b border-white/10 shadow-2xl shadow-black/50' : 'pt-10'}`}>
+      <div className={`sticky top-0 z-30 transition-all duration-300 ${showCompact ? 'bg-rev-bg/95 backdrop-blur-xl border-b border-white/10 shadow-2xl shadow-black/50' : 'pt-10'}`}>
         <UrlBar 
           onLoad={handleLoadUrl} 
           onDemo={handleDemo}
           onHome={handleReset}
           isLoading={isLoading} 
           error={error}
-          compact={items.length > 0}
+          compact={showCompact}
         />
         
-        {items.length > 0 && (
+        {showCompact && (
           <div className="animate-fade-in flex flex-col gap-1">
-            {/* Title / Stats Row */}
-            <div className="max-w-[1600px] w-full mx-auto px-4 flex justify-between items-center py-2">
-              <div className="flex flex-col">
-                <h2 className="text-base font-bold text-white flex items-center gap-2 max-w-[200px] sm:max-w-md truncate">
-                  {loadedUrl === "Mode Démo" ? "Galerie Démo" : loadedUrl.replace(/^https?:\/\//, '')}
-                  {usingProxy && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 shrink-0">
-                      <ShieldCheck size={10} /> Proxy
-                    </span>
-                  )}
-                </h2>
-                <p className="text-rev-textSub text-xs font-medium">
-                  {processedItems.length} éléments
-                </p>
-              </div>
+            {isLoading ? (
+               // Header Skeleton (Stats area)
+               <div className="max-w-[1600px] w-full mx-auto px-4 flex justify-between items-center py-3">
+                  <div className="flex flex-col gap-2">
+                     <div className="h-4 w-32 bg-rev-surfaceHighlight/50 rounded-md animate-pulse"></div>
+                     <div className="h-3 w-16 bg-rev-surfaceHighlight/50 rounded-md animate-pulse"></div>
+                  </div>
+                  <div className="flex gap-2">
+                     <div className="h-8 w-8 rounded-full bg-rev-surfaceHighlight/50 animate-pulse"></div>
+                     <div className="h-8 w-24 rounded-full bg-rev-surfaceHighlight/50 animate-pulse"></div>
+                  </div>
+               </div>
+            ) : (
+               // Real Stats
+               <div className="max-w-[1600px] w-full mx-auto px-4 flex justify-between items-center py-2">
+                 <div className="flex flex-col">
+                   <h2 className="text-base font-bold text-white flex items-center gap-2 max-w-[200px] sm:max-w-md truncate">
+                     {loadedUrl === "Mode Démo" ? "Galerie Démo" : loadedUrl.replace(/^https?:\/\//, '')}
+                     {usingProxy && (
+                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 shrink-0">
+                         <ShieldCheck size={10} /> Proxy
+                       </span>
+                     )}
+                   </h2>
+                   <p className="text-rev-textSub text-xs font-medium">
+                     {processedItems.length} éléments
+                   </p>
+                 </div>
 
-              <div className="flex gap-2">
-                  <a 
-                    href={loadedUrl} 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="p-2 rounded-full bg-rev-surface hover:bg-rev-surfaceHighlight text-gray-400 hover:text-white transition"
-                    title="Ouvrir le dossier original"
-                  >
-                      <ExternalLink size={16} />
-                  </a>
-                  <button 
-                    onClick={handleShare}
-                    className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-black hover:bg-gray-200 transition active:scale-95 text-xs font-bold"
-                  >
-                    {justShared ? <Check size={14} className="text-green-600" /> : <Share2 size={14} />}
-                    {justShared ? 'Copié' : 'Partager'}
-                  </button>
-              </div>
-            </div>
+                 <div className="flex gap-2">
+                     <a 
+                       href={loadedUrl} 
+                       target="_blank" 
+                       rel="noreferrer"
+                       className="p-2 rounded-full bg-rev-surface hover:bg-rev-surfaceHighlight text-gray-400 hover:text-white transition"
+                       title="Ouvrir le dossier original"
+                     >
+                         <ExternalLink size={16} />
+                     </a>
+                     <button 
+                       onClick={handleShare}
+                       className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-black hover:bg-gray-200 transition active:scale-95 text-xs font-bold"
+                     >
+                       {justShared ? <Check size={14} className="text-green-600" /> : <Share2 size={14} />}
+                       {justShared ? 'Copié' : 'Partager'}
+                     </button>
+                 </div>
+               </div>
+            )}
 
             {/* Filter Bar integrated into header */}
-            <FilterBar 
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              sortOption={sortOption}
-              onSortChange={setSortOption}
-              filterType={filterType}
-              onFilterTypeChange={setFilterType}
-            />
+            {isLoading ? (
+               // Filter Bar Skeleton
+               <div className="w-full max-w-[1600px] mx-auto px-4 pb-3">
+                  <div className="flex gap-3 overflow-hidden">
+                     <div className="h-10 w-48 bg-rev-surfaceHighlight/50 rounded-2xl animate-pulse shrink-0"></div>
+                     <div className="h-10 w-24 bg-rev-surfaceHighlight/50 rounded-2xl animate-pulse shrink-0"></div>
+                     <div className="h-10 w-32 bg-rev-surfaceHighlight/50 rounded-2xl animate-pulse shrink-0"></div>
+                  </div>
+               </div>
+            ) : (
+               <FilterBar 
+                 searchQuery={searchQuery}
+                 onSearchChange={setSearchQuery}
+                 sortOption={sortOption}
+                 onSortChange={setSortOption}
+                 filterType={filterType}
+                 onFilterTypeChange={setFilterType}
+               />
+            )}
           </div>
         )}
       </div>
 
       {/* Main Content */}
       <main className="max-w-[1600px] mx-auto px-4 min-h-[50vh] pt-4">
+        {isLoading && <GallerySkeleton />}
+
         {!isLoading && items.length === 0 && !error && (
           <div className="flex flex-col items-center justify-center text-gray-600 mt-20 p-8 text-center opacity-60">
             <div className="w-24 h-24 bg-rev-surface rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-black border border-white/5">
@@ -259,7 +293,7 @@ const App: React.FC = () => {
 
         <Gallery items={processedItems} onItemClick={(index) => setLightboxIndex(index)} />
         
-        {items.length > 0 && processedItems.length === 0 && (
+        {!isLoading && items.length > 0 && processedItems.length === 0 && (
            <div className="text-center py-20 text-gray-500">
               Aucun résultat pour ces filtres.
            </div>
