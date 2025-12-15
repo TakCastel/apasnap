@@ -1,0 +1,5 @@
+{
+  "name": "Apasnap",
+  "description": "A modern, aesthetic visualizer for Apache directory listings. Transforms raw file lists into a beautiful gallery with lightbox capabilities.",
+  "requestFramePermissions": []
+}
