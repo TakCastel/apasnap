@@ -9,7 +9,16 @@ import { Image as ImageIcon, ShieldCheck, Share2, Check, ExternalLink } from 'lu
 
 const App: React.FC = () => {
   const [items, setItems] = useState<MediaItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  
+  // Initialize loading state based on URL presence to prevent flash of content
+  const [isLoading, setIsLoading] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return !!params.get('url');
+    }
+    return false;
+  });
+
   const [error, setError] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [loadedUrl, setLoadedUrl] = useState<string>('');

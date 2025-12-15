@@ -58,6 +58,24 @@ const UrlBar: React.FC<UrlBarProps> = ({ onLoad, onDemo, onHome, isLoading, erro
     );
   }
 
+  // Loading State (Replaces Hero Form)
+  if (isLoading) {
+    return (
+        <div className="w-full max-w-lg mx-auto px-6 mt-32 animate-fade-in text-center">
+            <div className="flex flex-col items-center gap-6">
+                <div className="relative">
+                   <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full"></div>
+                   <Loader2 className="h-16 w-16 text-blue-500 animate-spin relative z-10" />
+                </div>
+                <div className="space-y-3">
+                    <h2 className="text-3xl font-bold text-white tracking-tight">Chargement en cours</h2>
+                    <p className="text-rev-textSub text-lg">Récupération du contenu du dossier...</p>
+                </div>
+            </div>
+        </div>
+    );
+  }
+
   // Welcome / Hero Mode
   return (
     <div className="w-full max-w-lg mx-auto px-6 mt-20 animate-slide-up">
