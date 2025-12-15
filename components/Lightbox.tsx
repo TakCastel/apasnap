@@ -16,12 +16,14 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [hasCopied, setHasCopied] = useState(false);
   
-  // Track current zoom scale to disable swipe when zoomed in
-  const scaleRef = useRef(1);
-  
-  // Custom Swipe Logic refs
-  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  // Slider / Drag State
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
 
+  // Refs for gestures and zoom tracking
+  const scaleRef = useRef(1);
+  const startXRef = useRef<number | null>(null);
+  
   // We use the optimizer logic directly in the src now, but keep fallback state
   const [loadOriginal, setLoadOriginal] = useState(false);
 
@@ -33,7 +35,8 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
       setIsImgLoading(true);
       setLoadOriginal(false);
       setShowShareMenu(false);
-      scaleRef.current = 1; // Reset scale tracker
+      scaleRef.current = 1;
+      setDragOffset(0);
     }
   }, [currentIndex, items.length]);
 
@@ -43,48 +46,52 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
       setIsImgLoading(true);
       setLoadOriginal(false);
       setShowShareMenu(false);
-      scaleRef.current = 1; // Reset scale tracker
+      scaleRef.current = 1;
+      setDragOffset(0);
     }
   }, [currentIndex]);
 
-  // Custom Swipe Handlers (Capture Phase)
+  // Touch / Slider Logic
   const handleTouchStart = (e: React.TouchEvent) => {
-    // Only track single touch for swipe
-    if (e.touches.length === 1) {
-      touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    if (scaleRef.current > 1.05 || e.touches.length > 1) return;
+    startXRef.current = e.touches[0].clientX;
+    setIsDragging(true);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging || startXRef.current === null || scaleRef.current > 1.05) return;
+    
+    const currentX = e.touches[0].clientX;
+    const diff = currentX - startXRef.current;
+    
+    // Add resistance at the edges
+    const isFirst = currentIndex === 0;
+    const isLast = currentIndex === items.length - 1;
+    
+    if ((isFirst && diff > 0) || (isLast && diff < 0)) {
+        setDragOffset(diff * 0.3); // Heavy resistance
     } else {
-      touchStart.current = null;
+        setDragOffset(diff);
     }
   };
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStart.current) return;
+  const handleTouchEnd = () => {
+    if (!isDragging || startXRef.current === null) return;
     
-    // If zoomed in significantly, don't swipe navigate
-    if (scaleRef.current > 1.1) return;
-
-    const touchEndX = e.changedTouches[0].clientX;
-    const touchEndY = e.changedTouches[0].clientY;
+    const threshold = window.innerWidth * 0.20; // 20% screen width to trigger switch
     
-    const diffX = touchStart.current.x - touchEndX;
-    const diffY = touchStart.current.y - touchEndY;
-
-    // Thresholds
-    const minSwipeDistance = 50;
-    const maxVerticalDistance = 80; // Allow some diagonal movement
-
-    // Check if it's a horizontal swipe
-    if (Math.abs(diffX) > minSwipeDistance && Math.abs(diffY) < maxVerticalDistance) {
-      if (diffX > 0) {
-        // Swiped Left -> Next
-        handleNext();
-      } else {
-        // Swiped Right -> Prev
-        handlePrev();
-      }
+    if (dragOffset < -threshold && currentIndex < items.length - 1) {
+       handleNext();
+    } else if (dragOffset > threshold && currentIndex > 0) {
+       handlePrev();
     }
     
-    touchStart.current = null;
+    // Reset state. 
+    // If we switched, the key={currentIndex} on the div will force a re-mount at pos 0, avoiding "slide back" animation.
+    // If we didn't switch, the transition will snap it back to 0.
+    setDragOffset(0);
+    setIsDragging(false);
+    startXRef.current = null;
   };
 
   useEffect(() => {
@@ -103,14 +110,11 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
 
   const getDisplayUrl = (item: MediaItem) => {
     if (item.type === MediaType.VIDEO) return item.url;
-    // If we decided to load original (fallback) or if it's explicitly requested
     if (loadOriginal) return item.url;
-    // Otherwise, serve high-quality WebP
     return getFullScreenUrl(item.url);
   };
 
   const handleError = () => {
-    // If optimized version fails, fallback to original
     if (!loadOriginal) {
       setLoadOriginal(true);
     }
@@ -118,7 +122,6 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
 
   const downloadItem = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Always download the ORIGINAL file, not the WebP version
     const link = document.createElement('a');
     link.href = currentItem.url;
     link.download = currentItem.name;
@@ -129,8 +132,6 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
 
   const handleShareClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    
-    // Use Native Share if available
     if (navigator.share) {
       try {
         await navigator.share({
@@ -142,7 +143,6 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
         console.debug('Share cancelled or failed', err);
       }
     } else {
-      // Toggle custom menu
       setShowShareMenu(!showShareMenu);
     }
   };
@@ -165,14 +165,21 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
     <div className="fixed inset-0 z-50 flex flex-col bg-black animate-fade-in touch-none">
       
       {/* 
-        Image Area 
-        Includes custom Capture Phase listeners to handle swipe before children (zoom lib) consume events
+        Image Container with Swipe Logic 
+        key={currentIndex} ensures we get a fresh container on image switch (no transition artifacts)
       */}
       <div 
+        key={currentIndex}
         className="flex-1 relative flex items-center justify-center overflow-hidden w-full h-full" 
         onClick={() => { setShowShareMenu(false); onClose(); }}
         onTouchStartCapture={handleTouchStart}
+        onTouchMoveCapture={handleTouchMove}
         onTouchEndCapture={handleTouchEnd}
+        style={{ 
+            transform: `translateX(${dragOffset}px)`, 
+            transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)',
+            touchAction: 'none'
+        }}
       >
         
         {isImgLoading && currentItem.type === MediaType.IMAGE && (
@@ -206,12 +213,12 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
                 contentClass="!w-full !h-full flex items-center justify-center"
               >
                 <img
-                  key={currentItem.id} // Remount on change to reset zoom
                   src={getDisplayUrl(currentItem)}
                   alt={currentItem.name}
                   className={`max-w-full max-h-full object-contain transition-opacity duration-300 ${isImgLoading ? 'opacity-0' : 'opacity-100'}`}
                   onLoad={() => setIsImgLoading(false)}
                   onError={handleError}
+                  draggable={false} // Prevent native drag
                 />
               </TransformComponent>
             </TransformWrapper>
@@ -240,7 +247,6 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
         </div>
 
         <div className="flex items-center justify-between pointer-events-auto">
-          
           <div className="flex gap-3">
              <button 
                 onClick={downloadItem}
@@ -259,7 +265,7 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
                   <Share2 size={20} />
                 </button>
 
-                {/* Share Menu Fallback for Desktop */}
+                {/* Share Menu */}
                 {showShareMenu && (
                   <div className="absolute bottom-full left-0 mb-3 bg-rev-surface border border-white/10 rounded-2xl shadow-xl overflow-hidden min-w-[200px] animate-slide-up flex flex-col p-1">
                     <button 
