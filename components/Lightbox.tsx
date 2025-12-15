@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MediaItem, MediaType } from '../types';
 import { X, ChevronLeft, ChevronRight, Download, Share2, Link2, Check, Twitter, Facebook } from 'lucide-react';
 import { getFullScreenUrl } from '../services/imageOptimizer';
+import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
+import { useSwipeable } from 'react-swipeable';
 
 interface LightboxProps {
   items: MediaItem[];
@@ -15,6 +17,9 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [hasCopied, setHasCopied] = useState(false);
   
+  // Track current zoom scale to disable swipe when zoomed in
+  const scaleRef = useRef(1);
+
   // We use the optimizer logic directly in the src now, but keep fallback state
   const [loadOriginal, setLoadOriginal] = useState(false);
 
@@ -26,6 +31,7 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
       setIsImgLoading(true);
       setLoadOriginal(false);
       setShowShareMenu(false);
+      scaleRef.current = 1; // Reset scale tracker
     }
   }, [currentIndex, items.length]);
 
@@ -35,8 +41,23 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
       setIsImgLoading(true);
       setLoadOriginal(false);
       setShowShareMenu(false);
+      scaleRef.current = 1; // Reset scale tracker
     }
   }, [currentIndex]);
+
+  // Swipe Handlers
+  const swipeHandlers = useSwipeable({
+    onSwipedLeft: () => {
+      // Only swipe if not zoomed in (with small tolerance for float precision)
+      if (scaleRef.current <= 1.05) handleNext();
+    },
+    onSwipedRight: () => {
+      if (scaleRef.current <= 1.05) handlePrev();
+    },
+    trackMouse: false, // Only touch gestures
+    preventScrollOnSwipe: true,
+    delta: 30, // Min distance to trigger
+  });
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -115,8 +136,15 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black animate-fade-in touch-none">
       
-      {/* Image Area */}
-      <div className="flex-1 relative flex items-center justify-center overflow-hidden" onClick={() => { setShowShareMenu(false); onClose(); }}>
+      {/* 
+        Image Area 
+        Includes Swipe Listeners on the container
+      */}
+      <div 
+        {...swipeHandlers}
+        className="flex-1 relative flex items-center justify-center overflow-hidden w-full h-full" 
+        onClick={() => { setShowShareMenu(false); onClose(); }}
+      >
         
         {isImgLoading && currentItem.type === MediaType.IMAGE && (
           <div className="absolute inset-0 flex items-center justify-center z-0">
@@ -129,27 +157,36 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
             src={currentItem.url} 
             controls 
             autoPlay 
-            className="max-w-full max-h-full object-contain"
+            className="max-w-full max-h-full object-contain z-10"
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <img
-            key={currentItem.id} // Remount on change
-            src={getDisplayUrl(currentItem)}
-            alt={currentItem.name}
-            className={`max-w-full max-h-full object-contain transition-opacity duration-300 ${isImgLoading ? 'opacity-0' : 'opacity-100'}`}
-            onLoad={() => setIsImgLoading(false)}
-            onError={handleError}
-            onClick={(e) => e.stopPropagation()}
-          />
-        )}
-
-        {/* Click Zones for Navigation */}
-        {currentIndex > 0 && (
-          <div onClick={(e) => { e.stopPropagation(); handlePrev(); }} className="absolute inset-y-0 left-0 w-1/4 z-10 cursor-pointer" />
-        )}
-        {currentIndex < items.length - 1 && (
-          <div onClick={(e) => { e.stopPropagation(); handleNext(); }} className="absolute inset-y-0 right-0 w-1/4 z-10 cursor-pointer" />
+          <div className="w-full h-full" onClick={(e) => e.stopPropagation()}>
+            <TransformWrapper
+              initialScale={1}
+              minScale={1}
+              maxScale={5}
+              centerOnInit={true}
+              wheel={{ step: 0.2 }}
+              onTransformed={(e) => {
+                scaleRef.current = e.state.scale;
+              }}
+            >
+              <TransformComponent 
+                wrapperClass="!w-full !h-full" 
+                contentClass="!w-full !h-full flex items-center justify-center"
+              >
+                <img
+                  key={currentItem.id} // Remount on change to reset zoom
+                  src={getDisplayUrl(currentItem)}
+                  alt={currentItem.name}
+                  className={`max-w-full max-h-full object-contain transition-opacity duration-300 ${isImgLoading ? 'opacity-0' : 'opacity-100'}`}
+                  onLoad={() => setIsImgLoading(false)}
+                  onError={handleError}
+                />
+              </TransformComponent>
+            </TransformWrapper>
+          </div>
         )}
       </div>
 
@@ -208,7 +245,6 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
                       onClick={(e) => openSocial(e, `https://wa.me/?text=${encodeURIComponent(currentItem.url)}`)}
                       className="flex items-center gap-3 w-full px-4 py-3 hover:bg-white/10 rounded-xl text-left transition-colors text-sm font-medium text-white"
                     >
-                       {/* Simple generic icon or text if icons missing */}
                        <span className="font-bold text-green-500">WA</span> WhatsApp
                     </button>
                     <button 
