@@ -3,7 +3,6 @@ import { MediaItem, MediaType } from '../types';
 import { X, ChevronLeft, ChevronRight, Download, Share2, Link2, Check, Twitter, Facebook } from 'lucide-react';
 import { getFullScreenUrl } from '../services/imageOptimizer';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
-import { useSwipeable } from 'react-swipeable';
 
 interface LightboxProps {
   items: MediaItem[];
@@ -19,6 +18,9 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
   
   // Track current zoom scale to disable swipe when zoomed in
   const scaleRef = useRef(1);
+  
+  // Custom Swipe Logic refs
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
 
   // We use the optimizer logic directly in the src now, but keep fallback state
   const [loadOriginal, setLoadOriginal] = useState(false);
@@ -45,19 +47,45 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
     }
   }, [currentIndex]);
 
-  // Swipe Handlers
-  const swipeHandlers = useSwipeable({
-    onSwipedLeft: () => {
-      // Only swipe if not zoomed in (with small tolerance for float precision)
-      if (scaleRef.current <= 1.05) handleNext();
-    },
-    onSwipedRight: () => {
-      if (scaleRef.current <= 1.05) handlePrev();
-    },
-    trackMouse: false, // Only touch gestures
-    preventScrollOnSwipe: true,
-    delta: 30, // Min distance to trigger
-  });
+  // Custom Swipe Handlers (Capture Phase)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    // Only track single touch for swipe
+    if (e.touches.length === 1) {
+      touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else {
+      touchStart.current = null;
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStart.current) return;
+    
+    // If zoomed in significantly, don't swipe navigate
+    if (scaleRef.current > 1.1) return;
+
+    const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
+    
+    const diffX = touchStart.current.x - touchEndX;
+    const diffY = touchStart.current.y - touchEndY;
+
+    // Thresholds
+    const minSwipeDistance = 50;
+    const maxVerticalDistance = 80; // Allow some diagonal movement
+
+    // Check if it's a horizontal swipe
+    if (Math.abs(diffX) > minSwipeDistance && Math.abs(diffY) < maxVerticalDistance) {
+      if (diffX > 0) {
+        // Swiped Left -> Next
+        handleNext();
+      } else {
+        // Swiped Right -> Prev
+        handlePrev();
+      }
+    }
+    
+    touchStart.current = null;
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -138,12 +166,13 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
       
       {/* 
         Image Area 
-        Includes Swipe Listeners on the container
+        Includes custom Capture Phase listeners to handle swipe before children (zoom lib) consume events
       */}
       <div 
-        {...swipeHandlers}
         className="flex-1 relative flex items-center justify-center overflow-hidden w-full h-full" 
         onClick={() => { setShowShareMenu(false); onClose(); }}
+        onTouchStartCapture={handleTouchStart}
+        onTouchEndCapture={handleTouchEnd}
       >
         
         {isImgLoading && currentItem.type === MediaType.IMAGE && (
