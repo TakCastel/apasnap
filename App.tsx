@@ -6,7 +6,7 @@ import Lightbox from './components/Lightbox';
 import FilterBar from './components/FilterBar';
 import { parseApacheDirectoryHtml, generateDemoData } from './services/parser';
 import { MediaItem, MediaType } from './types';
-import { Image as ImageIcon, ShieldCheck, Share2, Check, ExternalLink } from 'lucide-react';
+import { ShieldCheck, Share2, Check, ExternalLink } from 'lucide-react';
 
 const App: React.FC = () => {
   const [items, setItems] = useState<MediaItem[]>([]);
@@ -23,6 +23,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [loadedUrl, setLoadedUrl] = useState<string>('');
+  const [lastValidUrl, setLastValidUrl] = useState<string>(''); // Stores the last successful URL
   const [usingProxy, setUsingProxy] = useState(false);
   const [justShared, setJustShared] = useState(false);
 
@@ -89,6 +90,7 @@ const App: React.FC = () => {
       } else {
         setItems(parsedItems);
         setLoadedUrl(url);
+        setLastValidUrl(url); // Save as last valid URL
         
         try {
           const newUrl = new URL(window.location.href);
@@ -209,6 +211,7 @@ const App: React.FC = () => {
           isLoading={isLoading} 
           error={error}
           compact={showCompact}
+          lastValidUrl={lastValidUrl}
         />
         
         {showCompact && (
@@ -290,15 +293,6 @@ const App: React.FC = () => {
       {/* Main Content */}
       <main className="max-w-[1600px] mx-auto px-4 min-h-[50vh] pt-4">
         {isLoading && <GallerySkeleton />}
-
-        {!isLoading && items.length === 0 && !error && (
-          <div className="flex flex-col items-center justify-center text-gray-600 mt-20 p-8 text-center opacity-60">
-            <div className="w-24 h-24 bg-rev-surface rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-black border border-white/5">
-              <ImageIcon size={48} className="text-gray-500" />
-            </div>
-            <p className="text-xl font-bold text-gray-300">Prêt à visualiser</p>
-          </div>
-        )}
 
         <Gallery items={processedItems} onItemClick={(index) => setLightboxIndex(index)} />
         
