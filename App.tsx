@@ -79,9 +79,6 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     setItems([]);
-    // Note: loadedUrl is not set immediately here to avoid showing "https://..." title during skeleton load if not desired, 
-    // but setting it here allows the "Compact" bar to show the URL in input if needed.
-    // For now we rely on items.length for some UI logic, but we need a 'showCompact' flag.
     
     try {
       const html = await fetchWithProxyFallback(url);
@@ -136,7 +133,7 @@ const App: React.FC = () => {
     }, 800);
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
     let shareUrl = window.location.href;
     try {
       const urlObj = new URL(window.location.href);
@@ -146,10 +143,22 @@ const App: React.FC = () => {
       shareUrl = urlObj.toString();
     } catch (e) { console.warn("Could not construct share URL"); }
 
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      setJustShared(true);
-      setTimeout(() => setJustShared(false), 2000);
-    });
+    if (navigator.share) {
+       try {
+          await navigator.share({
+             title: 'Apasnap',
+             text: 'Regarde ce dossier photos !',
+             url: shareUrl
+          });
+       } catch (err) {
+          console.debug("Share cancelled");
+       }
+    } else {
+       navigator.clipboard.writeText(shareUrl).then(() => {
+         setJustShared(true);
+         setTimeout(() => setJustShared(false), 2000);
+       });
+    }
   };
 
   // Filtering and Sorting Logic
