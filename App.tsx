@@ -97,11 +97,54 @@ const App: React.FC = () => {
          if (proxyEnabled) {
             // Explicit Proxy Mode
             setUsingProxy(true);
-            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-            const response = await fetch(proxyUrl);
-            if (!response.ok) throw new Error(`Erreur Proxy (${response.status}). Vérifiez l'URL.`);
-            const html = await response.text();
-            parsedItems = parseApacheDirectoryHtml(html, url);
+
+            // Robust multi-proxy fetcher
+            const fetchHtmlViaProxy = async (targetUrl: string) => {
+                const proxies = [
+                   // Primary: CorsProxy.io
+                   (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+                   // Fallback: AllOrigins (Raw)
+                   (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`
+                ];
+
+                let lastError: any = new Error("Aucun proxy n'a fonctionné");
+
+                for (const proxyGen of proxies) {
+                    try {
+                        const res = await fetch(proxyGen(targetUrl));
+                        
+                        // Handle Auth errors immediately without fallback
+                        if (res.status === 401) throw new Error("401_AUTH");
+                        if (res.status === 403) throw new Error("403_FORBIDDEN");
+
+                        if (!res.ok) throw new Error(`HTTP_${res.status}`);
+                        
+                        return await res.text();
+                    } catch (e: any) {
+                        lastError = e;
+                        // If it's auth related, stop trying other proxies
+                        if (e.message === "401_AUTH" || e.message === "403_FORBIDDEN") {
+                            throw e;
+                        }
+                        console.warn("Proxy failed, trying next...", e);
+                    }
+                }
+                throw lastError;
+            };
+
+            try {
+               const html = await fetchHtmlViaProxy(url);
+               parsedItems = parseApacheDirectoryHtml(html, url);
+            } catch (err: any) {
+               if (err.message === "401_AUTH") {
+                   throw new Error("Accès refusé (401). Ce dossier est protégé par un mot de passe.");
+               } else if (err.message === "403_FORBIDDEN") {
+                   throw new Error("Accès interdit (403). Le serveur refuse l'accès.");
+               } else {
+                   throw new Error(`Erreur de chargement via Proxy. Vérifiez l'URL ou réessayez.`);
+               }
+            }
+
          } else {
             // Direct Mode
             try {
@@ -227,11 +270,14 @@ const App: React.FC = () => {
   return (
     <div className={`min-h-screen bg-rev-bg text-white font-sans selection:bg-rev-accent selection:text-white ${showCompact ? 'pb-20' : ''}`}>
       
-      <div className={`transition-all duration-300 ${
+      <div 
+        id="app-header"
+        className={`transition-all duration-300 ${
           showCompact 
             ? 'sticky top-0 z-30 glass border-b border-white/5' 
             : 'relative'
-        }`}>
+        }`}
+      >
         
         <UrlBar 
           onLoad={handleLoadUrl} 
