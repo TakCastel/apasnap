@@ -1,14 +1,18 @@
+
 import { MediaItem, MediaType } from '../types';
+
+const ALLOWED_IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp'];
+const ALLOWED_VIDEO_EXT = ['mp4', 'webm', 'mov', 'mkv'];
 
 /**
  * Determines the media type based on file extension
  */
 const getMediaType = (filename: string): MediaType => {
   const ext = filename.split('.').pop()?.toLowerCase();
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif'].includes(ext || '')) {
+  if (ALLOWED_IMAGE_EXT.includes(ext || '')) {
     return MediaType.IMAGE;
   }
-  if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext || '')) {
+  if (ALLOWED_VIDEO_EXT.includes(ext || '')) {
     return MediaType.VIDEO;
   }
   return MediaType.UNKNOWN;
@@ -24,7 +28,7 @@ export const parseApacheDirectoryHtml = (html: string, baseUrl: string): MediaIt
   
   const items: MediaItem[] = [];
 
-  // Ensure baseUrl ends with a slash
+  // Ensure baseUrl ends with a slash for construction
   const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
 
   links.forEach((link, index) => {
@@ -35,28 +39,26 @@ export const parseApacheDirectoryHtml = (html: string, baseUrl: string): MediaIt
     if (!href || href === '../' || text === 'Parent Directory' || href.includes('?')) {
       return;
     }
+    
+    // Security: Ignore javascript:, data:, or non-http links if absolute
+    if (href.startsWith('javascript:') || href.startsWith('data:')) return;
 
     // Clean href (remove leading slash if present to append to base)
     const cleanHref = href.startsWith('/') ? href.substring(1) : href;
     
     // Construct full URL
-    // If the HREF already contains http, use it, otherwise append to base
     const fullUrl = href.startsWith('http') ? href : `${cleanBaseUrl}${cleanHref}`;
 
     const type = getMediaType(cleanHref);
 
     if (type !== MediaType.UNKNOWN) {
-      // Try to find metadata in the text node following the anchor (Apache standard)
-      // Apache output usually: <a href="...">filename</a>   date  size  desc
       let size = '';
       let date = '';
       
-      // Basic heuristic to grab siblings for metadata (works for standard Apache indexes)
       const nextNode = link.nextSibling;
       if (nextNode && nextNode.nodeType === Node.TEXT_NODE) {
         const metaText = nextNode.textContent || '';
         const parts = metaText.trim().split(/\s+/);
-        // Usually date is first, then size. This is loose parsing.
         if (parts.length >= 2) {
           date = `${parts[0]} ${parts[1]}`;
           size = parts[2] || '';
@@ -75,6 +77,38 @@ export const parseApacheDirectoryHtml = (html: string, baseUrl: string): MediaIt
   });
 
   return items;
+};
+
+/**
+ * Parses a JSON Manifest (apasnap.json)
+ * Format expected: { items: [{ name, url, type, size, date }] }
+ */
+export const parseManifestJson = (json: any, baseUrl: string): MediaItem[] => {
+  if (!json || !Array.isArray(json.items)) return [];
+  
+  const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+
+  return json.items.map((item: any, index: number) => {
+    // Determine type from name if not provided
+    const type = item.type || getMediaType(item.name || item.url);
+    
+    // Handle relative URLs in manifest
+    let fullUrl = item.url;
+    if (fullUrl && !fullUrl.startsWith('http')) {
+        fullUrl = `${cleanBaseUrl}${fullUrl.replace(/^\//, '')}`;
+    }
+
+    if (type === MediaType.UNKNOWN) return null;
+
+    return {
+      id: `manifest-${index}-${Date.now()}`,
+      name: item.name || `File ${index}`,
+      url: fullUrl,
+      type,
+      size: item.size,
+      date: item.date
+    };
+  }).filter((i: any) => i !== null) as MediaItem[];
 };
 
 /**

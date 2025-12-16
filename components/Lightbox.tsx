@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MediaItem, MediaType } from '../types';
-import { X, ChevronLeft, ChevronRight, Download, Share2, Link2, Check, Twitter, Facebook } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Download, Share2, Link2, Check, Twitter, Facebook, Loader2 } from 'lucide-react';
 import { getFullScreenUrl } from '../services/imageOptimizer';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 
@@ -13,6 +14,7 @@ interface LightboxProps {
 const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isImgLoading, setIsImgLoading] = useState(true);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [hasCopied, setHasCopied] = useState(false);
   
@@ -20,11 +22,14 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Zoom State tracking
+  const [isZoomed, setIsZoomed] = useState(false);
+
   // Refs for gestures and zoom tracking
   const scaleRef = useRef(1);
   const startXRef = useRef<number | null>(null);
+  const startYRef = useRef<number | null>(null);
   
-  // We use the optimizer logic directly in the src now, but keep fallback state
   const [loadOriginal, setLoadOriginal] = useState(false);
 
   const currentItem = items[currentIndex];
@@ -36,6 +41,7 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
       setLoadOriginal(false);
       setShowShareMenu(false);
       scaleRef.current = 1;
+      setIsZoomed(false);
       setDragOffset(0);
     }
   }, [currentIndex, items.length]);
@@ -47,31 +53,48 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
       setLoadOriginal(false);
       setShowShareMenu(false);
       scaleRef.current = 1;
+      setIsZoomed(false);
       setDragOffset(0);
     }
   }, [currentIndex]);
 
   // Touch / Slider Logic
   const handleTouchStart = (e: React.TouchEvent) => {
+    // Only enable custom swipe if we are NOT zoomed
     if (scaleRef.current > 1.05 || e.touches.length > 1) return;
+    
     startXRef.current = e.touches[0].clientX;
+    startYRef.current = e.touches[0].clientY;
     setIsDragging(true);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isDragging || startXRef.current === null || scaleRef.current > 1.05) return;
+    if (!isDragging || startXRef.current === null || startYRef.current === null || scaleRef.current > 1.05) return;
     
     const currentX = e.touches[0].clientX;
-    const diff = currentX - startXRef.current;
+    const currentY = e.touches[0].clientY;
+    
+    const diffX = currentX - startXRef.current;
+    const diffY = currentY - startYRef.current;
+
+    // Detect intent: if vertical scroll is dominant, cancel horizontal swipe
+    // and do NOT drag
+    if (Math.abs(diffY) > Math.abs(diffX)) {
+        // If the user intends to scroll vertically or just move up/down, we ignore it for the swipe
+        // Reseting drag ensures no "floating"
+        setIsDragging(false);
+        setDragOffset(0);
+        return;
+    }
     
     // Add resistance at the edges
     const isFirst = currentIndex === 0;
     const isLast = currentIndex === items.length - 1;
     
-    if ((isFirst && diff > 0) || (isLast && diff < 0)) {
-        setDragOffset(diff * 0.3); // Heavy resistance
+    if ((isFirst && diffX > 0) || (isLast && diffX < 0)) {
+        setDragOffset(diffX * 0.3); // Heavy resistance
     } else {
-        setDragOffset(diff);
+        setDragOffset(diffX);
     }
   };
 
@@ -86,12 +109,10 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
        handlePrev();
     }
     
-    // Reset state. 
-    // If we switched, the key={currentIndex} on the div will force a re-mount at pos 0, avoiding "slide back" animation.
-    // If we didn't switch, the transition will snap it back to 0.
     setDragOffset(0);
     setIsDragging(false);
     startXRef.current = null;
+    startYRef.current = null;
   };
 
   useEffect(() => {
@@ -120,14 +141,61 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
     }
   };
 
-  const downloadItem = (e: React.MouseEvent) => {
+  const downloadItem = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const link = document.createElement('a');
-    link.href = currentItem.url;
-    link.download = currentItem.name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    if (isDownloading) return;
+    setIsDownloading(true);
+
+    try {
+        // Attempt to fetch as blob to force "Save As" behavior
+        // We use corsproxy to avoid CORS issues if direct fetch fails
+        let fetchUrl = currentItem.url;
+        
+        // Simple check: if it's http and we are https, we might need proxy or it will fail mixed content
+        // But assuming mostly consistent env. 
+        // Try fetching directly first
+        try {
+            const response = await fetch(fetchUrl);
+            if (!response.ok) throw new Error('Network response was not ok');
+            const blob = await response.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = currentItem.name;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(blobUrl);
+        } catch (err) {
+            // Fallback: If direct fetch fails (likely CORS), try the proxy
+            console.log("Direct download failed, trying proxy...");
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(currentItem.url)}`;
+            const response = await fetch(proxyUrl);
+            const blob = await response.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = currentItem.name;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(blobUrl);
+        }
+    } catch (finalErr) {
+        console.error("Download failed", finalErr);
+        // Last resort: just open it (standard behavior)
+        const link = document.createElement('a');
+        link.href = currentItem.url;
+        link.download = currentItem.name;
+        link.target = "_blank";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    } finally {
+        setIsDownloading(false);
+    }
   };
 
   const handleShareClick = async (e: React.MouseEvent) => {
@@ -166,7 +234,6 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
       
       {/* 
         Image Container with Swipe Logic 
-        key={currentIndex} ensures we get a fresh container on image switch (no transition artifacts)
       */}
       <div 
         key={currentIndex}
@@ -204,8 +271,13 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
               maxScale={5}
               centerOnInit={true}
               wheel={{ step: 0.2 }}
+              // Critical: Disable internal panning when not zoomed to prevent "floating" image
+              panning={{ disabled: !isZoomed, velocityDisabled: true }}
+              alignmentAnimation={{ disabled: true }}
               onTransformed={(e) => {
-                scaleRef.current = e.state.scale;
+                  scaleRef.current = e.state.scale;
+                  if (e.state.scale > 1.01 && !isZoomed) setIsZoomed(true);
+                  if (e.state.scale <= 1.01 && isZoomed) setIsZoomed(false);
               }}
             >
               <TransformComponent 
@@ -250,10 +322,11 @@ const Lightbox: React.FC<LightboxProps> = ({ items, initialIndex, onClose }) => 
           <div className="flex gap-3">
              <button 
                 onClick={downloadItem}
-                className="flex items-center justify-center h-12 w-12 bg-white/10 backdrop-blur-xl rounded-full text-white hover:bg-white/20 transition active:scale-95"
+                disabled={isDownloading}
+                className="flex items-center justify-center h-12 w-12 bg-white/10 backdrop-blur-xl rounded-full text-white hover:bg-white/20 transition active:scale-95 disabled:opacity-50"
                 title="Télécharger"
              >
-                <Download size={20} />
+                {isDownloading ? <Loader2 size={20} className="animate-spin"/> : <Download size={20} />}
              </button>
 
              <div className="relative">

@@ -1,5 +1,6 @@
-import React from 'react';
-import { Search, ArrowUpAZ } from 'lucide-react';
+
+import React, { useState } from 'react';
+import { Search, ArrowDownUp, Image, Video, Layers, Check } from 'lucide-react';
 import { MediaType } from '../types';
 
 interface FilterBarProps {
@@ -9,6 +10,7 @@ interface FilterBarProps {
   onSortChange: (value: string) => void;
   filterType: 'ALL' | MediaType;
   onFilterTypeChange: (value: 'ALL' | MediaType) => void;
+  totalItems: number;
 }
 
 const FilterBar: React.FC<FilterBarProps> = ({
@@ -17,62 +19,124 @@ const FilterBar: React.FC<FilterBarProps> = ({
   sortOption,
   onSortChange,
   filterType,
-  onFilterTypeChange
+  onFilterTypeChange,
+  totalItems
 }) => {
+  const [isSortOpen, setIsSortOpen] = useState(false);
+
+  const sortOptions = [
+    { value: 'date_desc', label: 'Plus récent' },
+    { value: 'date_asc', label: 'Plus ancien' },
+    { value: 'name_asc', label: 'Nom (A-Z)' },
+    { value: 'name_desc', label: 'Nom (Z-A)' },
+  ];
+
   return (
-    <div className="w-full max-w-[1600px] mx-auto px-4 pb-3 animate-fade-in">
-      {/* 
-        Responsive Layout:
-        - Mobile/Tablet: Horizontal scrolling row (instagram style) for accessibility and space saving.
-        - Desktop: Flex row justified to end.
-      */}
-      
-      <div className="flex flex-nowrap items-center gap-3 overflow-x-auto no-scrollbar md:justify-end pb-1">
+    <div className="w-full max-w-[1600px] mx-auto px-4 pb-2 animate-fade-in z-20 relative">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-3">
         
-        {/* Search Input - Expands but has min-width */}
-        <div className="relative group shrink-0 w-[180px] md:w-[240px]">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-gray-500 group-focus-within:text-white transition-colors" />
+        {/* Main "Command Pill" */}
+        <div className="w-full md:w-auto flex-1 bg-[#1a1a1a]/80 backdrop-blur-xl border border-white/10 rounded-full p-1.5 flex items-center shadow-2xl relative z-30">
+          
+          {/* Search Section */}
+          <div className="relative group flex-1 min-w-[140px]">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-4 w-4 text-gray-500 group-focus-within:text-white transition-colors" />
+            </div>
+            <input
+                type="text"
+                placeholder={`Chercher dans ${totalItems} fichiers...`}
+                value={searchQuery}
+                onChange={(e) => onSearchChange(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-transparent text-white placeholder-gray-600 focus:outline-none text-sm font-medium"
+            />
           </div>
-          <input
-              type="text"
-              placeholder="Rechercher..."
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full pl-9 pr-3 py-2.5 bg-rev-surface border border-white/5 rounded-2xl text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500/50 text-sm font-medium transition-all"
-          />
-        </div>
 
-        {/* Divider for visual separation on larger screens if needed, but spacing is usually enough */}
+          <div className="w-px h-6 bg-white/10 mx-2 hidden sm:block"></div>
 
-        {/* Type Filter Pills */}
-        <div className="flex bg-rev-surface border border-white/5 rounded-2xl p-1 gap-1 shrink-0">
-          {['ALL', MediaType.IMAGE, MediaType.VIDEO].map((type) => (
+          {/* Segmented Control for Type (Desktop) */}
+          <div className="hidden sm:flex bg-black/40 rounded-full p-1 gap-1">
             <button
-              key={type}
-              onClick={() => onFilterTypeChange(type as any)}
-              className={`px-4 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${filterType === type ? 'bg-rev-surfaceHighlight text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+              onClick={() => onFilterTypeChange('ALL')}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${filterType === 'ALL' ? 'bg-white text-black shadow-md' : 'text-gray-400 hover:text-white'}`}
             >
-              {type === 'ALL' ? 'Tout' : type === MediaType.IMAGE ? 'Photos' : 'Vidéos'}
+              <Layers size={12} />
+              Tout
             </button>
-          ))}
-        </div>
-        
-        {/* Sort Dropdown */}
-        <div className="relative shrink-0 group">
-          <select 
-            value={sortOption}
-            onChange={(e) => onSortChange(e.target.value)}
-            className="appearance-none pl-9 pr-8 py-2.5 bg-rev-surface border border-white/5 rounded-2xl text-white text-sm font-bold focus:outline-none cursor-pointer hover:bg-rev-surfaceHighlight transition-colors"
-          >
-            <option value="date_desc">Récent</option>
-            <option value="date_asc">Ancien</option>
-            <option value="name_asc">A-Z</option>
-          </select>
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 group-hover:text-white transition-colors">
-            <ArrowUpAZ size={16} />
+            <button
+              onClick={() => onFilterTypeChange(MediaType.IMAGE)}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${filterType === MediaType.IMAGE ? 'bg-white text-black shadow-md' : 'text-gray-400 hover:text-white'}`}
+            >
+              <Image size={12} />
+              Photos
+            </button>
+            <button
+              onClick={() => onFilterTypeChange(MediaType.VIDEO)}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${filterType === MediaType.VIDEO ? 'bg-white text-black shadow-md' : 'text-gray-400 hover:text-white'}`}
+            >
+              <Video size={12} />
+              Vidéos
+            </button>
+          </div>
+
+          <div className="w-px h-6 bg-white/10 mx-2"></div>
+
+          {/* Sort Custom Dropdown */}
+          <div className="relative shrink-0">
+             <button 
+                onClick={() => setIsSortOpen(!isSortOpen)}
+                className={`flex items-center justify-center h-8 w-8 rounded-full transition-all ${isSortOpen ? 'bg-white text-black' : 'bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white'}`}
+                title="Trier"
+             >
+                <ArrowDownUp size={16} />
+             </button>
+
+             {/* Dropdown Menu */}
+             {isSortOpen && (
+                <>
+                    <div className="fixed inset-0 z-[90]" onClick={() => setIsSortOpen(false)}></div>
+                    <div className="absolute top-full right-0 mt-3 w-48 bg-[#161616] border border-white/10 rounded-2xl shadow-2xl p-1 z-[100] animate-scale-in origin-top-right overflow-hidden">
+                        {sortOptions.map((opt) => (
+                            <button
+                                key={opt.value}
+                                onClick={() => {
+                                    onSortChange(opt.value);
+                                    setIsSortOpen(false);
+                                }}
+                                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white/5 text-xs font-bold transition-colors text-left"
+                            >
+                                <span className={sortOption === opt.value ? 'text-white' : 'text-gray-400'}>{opt.label}</span>
+                                {sortOption === opt.value && <Check size={14} className="text-blue-500" />}
+                            </button>
+                        ))}
+                    </div>
+                </>
+             )}
           </div>
         </div>
+
+        {/* Mobile Filter Tabs (Visible only on small screens below main pill) */}
+        <div className="sm:hidden flex w-full bg-[#1a1a1a]/80 backdrop-blur-xl border border-white/10 rounded-full p-1 gap-1 relative z-20">
+            <button
+              onClick={() => onFilterTypeChange('ALL')}
+              className={`flex-1 py-2 rounded-full text-xs font-bold transition-all flex justify-center items-center gap-1.5 ${filterType === 'ALL' ? 'bg-white text-black' : 'text-gray-400'}`}
+            >
+              Tout
+            </button>
+            <button
+              onClick={() => onFilterTypeChange(MediaType.IMAGE)}
+              className={`flex-1 py-2 rounded-full text-xs font-bold transition-all flex justify-center items-center gap-1.5 ${filterType === MediaType.IMAGE ? 'bg-white text-black' : 'text-gray-400'}`}
+            >
+              Photos
+            </button>
+            <button
+              onClick={() => onFilterTypeChange(MediaType.VIDEO)}
+              className={`flex-1 py-2 rounded-full text-xs font-bold transition-all flex justify-center items-center gap-1.5 ${filterType === MediaType.VIDEO ? 'bg-white text-black' : 'text-gray-400'}`}
+            >
+              Vidéos
+            </button>
+        </div>
+
       </div>
     </div>
   );
