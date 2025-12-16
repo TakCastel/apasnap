@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { MediaItem, MediaType } from '../types';
 import { PlayCircle, AlertCircle } from 'lucide-react';
 import { getThumbnailUrl } from '../services/imageOptimizer';
-import TimelineScrubber from './TimelineScrubber';
 
 interface GalleryProps {
   items: MediaItem[];
@@ -76,34 +75,11 @@ const Gallery: React.FC<GalleryProps> = ({ items, onItemClick }) => {
     return cols;
   }, [visibleItems, columnCount]);
 
-  const scrollToItem = (index: number) => {
-    // If the item isn't rendered yet (because of infinite scroll), 
-    // we would ideally load it, but for simplicity in this masonry layout,
-    // we clamp to what is visible or just try to find it.
-    
-    // Ensure the item is within the "visible" range roughly
-    // In a real infinite scroll, we'd need to force expand visibleCount
-    if (index >= visibleCount) {
-        setVisibleCount(Math.min(index + 50, items.length));
-        // Give React a frame to render
-        setTimeout(() => {
-            const el = document.getElementById(`gallery-item-${index}`);
-            el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 100);
-    } else {
-        const el = document.getElementById(`gallery-item-${index}`);
-        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-  };
-
   if (items.length === 0) return null;
 
   return (
-    <div className="w-full pb-32 relative pr-12 md:pr-20 transition-all duration-300">
+    <div className="w-full pb-32 relative transition-all duration-300">
       
-      {/* Visual Timeline Scrubber - Now passing ALL items */}
-      <TimelineScrubber items={items} onScrollToItem={scrollToItem} />
-
       <div className="flex gap-4 md:gap-6 items-start">
         {columns.map((colItems, colIndex) => (
           <div key={colIndex} className="flex-1 flex flex-col gap-4 md:gap-6 min-w-0">

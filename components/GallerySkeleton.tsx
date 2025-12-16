@@ -3,7 +3,7 @@ import React from 'react';
 
 const GallerySkeleton: React.FC = () => {
   return (
-    <div className="w-full pb-20 animate-pulse pr-12 md:pr-20">
+    <div className="w-full pb-20 animate-pulse">
       {/* Imitation de la grille Masonry (5 colonnes max selon breakpoints) */}
       <div className="flex gap-4 items-start">
          
